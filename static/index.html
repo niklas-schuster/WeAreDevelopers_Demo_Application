@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Todo List</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-image: url('img/background.jpg'); /* Replace with your background image URL */
+      background-size: cover;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .container {
+      background: rgba(255, 255, 255, 0.9);
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      width: 100%;
+      max-width: 600px;
+    }
+    h1 {
+      text-align: center;
+      color: #2E404D;
+      font-size: 4em;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-top: 0px;
+    }
+    ul {
+      list-style-type: none;
+      padding: 0;
+    }
+    li {
+      padding: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #ddd;
+      font-size: xx-large;
+    }
+    input[type="text"] {
+      width: calc(100% - 110px);
+      padding: 10px;
+      margin-right: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: x-large;
+    }
+    button {
+      padding: 10px 15px;
+      border: none;
+      border-radius: 5px;
+      background-color: #19A3FC;
+      color: white;
+      cursor: pointer;
+      font-size: x-large;
+    }
+    button:hover {
+      background-color: #19A3FC;
+    }
+    .delete-button {
+      background-color: #2E404D;
+    }
+    .delete-button:hover {
+      background-color: #2E404D;
+    }
+  </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Todo List</h1>
+        <ul id="todo-list"></ul>
+        <input type="text" id="task" placeholder="New Task">
+        <button onclick="addTodo()">Add</button>
+    </div>
+    <img style="position:absolute; height:170px; width:auto; bottom:90px; left:100px" src="img/nttdata_logo.png" alt="background image">
+    <img style="position:absolute; height:150px; width:auto; bottom:100px; right:100px"src="img/wearedevelopers_logo.png" alt="background image">
+  <script>
+    async function fetchTodos() {
+      try {
+        const response = await fetch('/todos');
+        if (!response.ok) {
+          throw new Error('Network response was not ok ' + response.statusText);
+        }
+        const todos = await response.json();
+        const list = document.getElementById('todo-list');
+        list.innerHTML = '';
+        todos.forEach(todo => {
+            const li = document.createElement('li');
+            li.className = 'todo-item';
+            li.textContent = todo.task;
+            const deleteButton = document.createElement('button');
+            deleteButton.className = 'delete-button';
+            deleteButton.innerHTML = '<i class="fas fa-trash-alt"></i>';
+            deleteButton.onclick = () => deleteTodo(todo.id);
+            li.appendChild(deleteButton);
+            list.appendChild(li);
+          });
+      } catch (error) {
+        console.error('Fetch error:', error);
+      }
+    }
+
+    async function addTodo() {
+      const task = document.getElementById('task').value;
+      if (!task) return;
+
+      try {
+        const response = await fetch('/todos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: String(Date.now()), task })
+        });
+        if (!response.ok) {
+          throw new Error('Network response was not ok ' + response.statusText);
+        }
+        fetchTodos();
+        document.getElementById('task').value = '';
+      } catch (error) {
+        console.error('Add todo error:', error);
+      }
+    }
+
+    async function deleteTodo(id) {
+        try {
+          const response = await fetch(`/todos/${id}`, {
+            method: 'DELETE'
+          });
+          if (!response.ok) {
+            throw new Error('Network response was not ok ' + response.statusText);
+          }
+          fetchTodos();
+        } catch (error) {
+          console.error('Delete todo error:', error);
+        }
+      }
+
+    fetchTodos();
+  </script>
+</body>
+</html>
