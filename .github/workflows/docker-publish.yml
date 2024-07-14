@@ -1,0 +1,77 @@
+name: Build & Publish MAIN
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: "[Init] Checkout Repository"
+      uses: actions/checkout@v3
+      
+    - name: "[Release] Determine Release Version"
+      id: version
+      uses: ietf-tools/semver-action@v1
+      with:
+        token: ${{ github.token }}
+        branch: main
+        
+    - name: "[Release] Generate Changelog"
+      id: changelog
+      uses: TriPSs/conventional-changelog-action@v3
+      with:
+        github-token: ${{ github.token }}
+        output-file: "false"
+        git-push: "false"
+        skip-git-pull: "true"
+        skip-version-file: "true"
+        skip-commit: "true"
+        
+    - name: "[Build] Build Container Image with Buildah"
+      id: build
+      uses: redhat-actions/buildah-build@v2
+      with:
+        image: we.are.developers.demo
+        tags: ${{ steps.version.outputs.nextStrict }}
+        containerfiles: |
+          Dockerfile
+          
+    - name: "[AWS] Configure credentials"
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: eu-west-2
+        
+    - name: "[AWS] Login to ECR"
+      id: login
+      uses: aws-actions/amazon-ecr-login@v1  
+        
+    - name: "[AWS] Push Container Image to ECR with Podman"
+      id: push
+      uses: redhat-actions/push-to-registry@v2
+      with:
+        image: we.are.developers.demo
+        tags: ${{ steps.version.outputs.nextStrict }}
+        registry: ${{ steps.login.outputs.registry }}
+        
+    - name: "[AWS] Print Image URL/ECR destination"
+      run: echo "Image pushed to ${{ steps.push.outputs.registry-paths }}"
+
+    - name: "[GitHub] Create GitHub Release"
+      id: release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      with:
+        tag_name: ${{ steps.version.outputs.nextStrict }}
+        release_name: Release ${{ steps.version.outputs.nextStrict }}
+        prerelease: true
+        body: ${{ steps.changelog.outputs.clean_changelog }}
+
+    - name: "[GitHub] Print Release ID"
+      run: echo "Release with ID ${{steps.release.outputs.id}} created"
