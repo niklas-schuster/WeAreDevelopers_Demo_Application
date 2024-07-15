@@ -19,14 +19,14 @@ type TodoItem struct {
 	Task string `json:"task"`
 }
 
-var (
-	tableName = "TodoTable2"
-	db        *dynamodb.DynamoDB
-)
+var tableName string
+var db *dynamodb.DynamoDB
 
 func init() {
+	awsRegion := os.Getenv("AWS_REGION")
+	tableName = os.Getenv("DYNAMODB_TABLE_NAME")
 	sess := session.Must(session.NewSession(&aws.Config{
-		Region: aws.String("eu-west-2"),
+		Region: aws.String(awsRegion),
 	}))
 	db = dynamodb.New(sess)
 }
