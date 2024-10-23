@@ -37,24 +37,28 @@ jobs:
         skip-version-file: "true"
         skip-commit: "true"
         
-    
+    - name: "[Build] Build Container Image with Buildah"
+      id: build
+      uses: redhat-actions/buildah-build@v2
+      with:
+        image: okp-crossplane-demo
+        tags: ${{ steps.version.outputs.nextStrict }}
+        containerfiles: |
+          Dockerfile
+          
     - name: Authenticate to Google Cloud
       id: auth
       uses: google-github-actions/auth@v2
       with:
         credentials_json: '${{ secrets.GCP_SA_KEY }}'
-      
-    - name: Building and pushing the image
-      uses: ./
-        # uses: RafikFarhad/push-to-gcr-github-action@v5-rc1 # <- use this on your workflow
+    - name: Pushing the image
+      uses: RafikFarhad/push-to-gcr-github-action@v5-rc1 # <- use this on your workflow
       with:
-        gcloud_service_key: ${{ secrets.GCP_SA_KEY }} # <- not needed when used with google-github-actions/auth@v2
         registry: gcr.io
         project_id: okp-crossplane-setup
         image_name: okp-crossplane-demo
         image_tag: ${{ steps.version.outputs.nextStrict }}
-        dockerfile: ./Dockerfile
-        target: build   
+        push_only: true
         
     - name: "[AWS] Print Image URL/ECR destination"
       run: echo "Image pushed to ${{ steps.push.outputs.registry-paths }}"
