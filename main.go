@@ -1,16 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"cloud.google.com/go/storage"
 	"github.com/gorilla/mux"
 )
 
@@ -19,34 +18,60 @@ type TodoItem struct {
 	Task string `json:"task"`
 }
 
-var tableName string
-var db *dynamodb.DynamoDB
+var bucketName string
+var client *storage.Client
+var ctx context.Context
 
 func init() {
-	awsRegion := os.Getenv("AWS_REGION")
-	tableName = os.Getenv("DYNAMODB_TABLE_NAME")
-	sess := session.Must(session.NewSession(&aws.Config{
-		Region: aws.String(awsRegion),
-	}))
-	db = dynamodb.New(sess)
+	bucketName = os.Getenv("GCP_BUCKET_NAME")
+	ctx = context.Background()
+
+	var err error
+	client, err = storage.NewClient(ctx)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 }
 
 func getTodos(w http.ResponseWriter, r *http.Request) {
-	result, err := db.Scan(&dynamodb.ScanInput{
-		TableName: aws.String(tableName),
-	})
-	if err != nil {
-		log.Printf("Error scanning DynamoDB: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	bucket := client.Bucket(bucketName)
+	query := &storage.Query{}
+	it := bucket.Objects(ctx, query)
 
 	var items []TodoItem
-	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &items)
-	if err != nil {
-		log.Printf("Error unmarshalling DynamoDB items: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	for {
+		objAttrs, err := it.Next()
+		if err == storage.ErrObjectNotExist {
+			break
+		}
+		if err != nil {
+			log.Printf("Error listing objects: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		rc, err := bucket.Object(objAttrs.Name).NewReader(ctx)
+		if err != nil {
+			log.Printf("Error reading object: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		data, err := ioutil.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			log.Printf("Error reading object data: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		var item TodoItem
+		if err := json.Unmarshal(data, &item); err != nil {
+			log.Printf("Error unmarshalling object data: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		items = append(items, item)
 	}
 
 	json.NewEncoder(w).Encode(items)
@@ -64,23 +89,23 @@ func addTodo(w http.ResponseWriter, r *http.Request) {
 	// Ensure ID is provided
 	if item.ID == "" {
 		log.Println("Missing ID in the request body")
-		http.Error(w, "Missing ID in the request body", http.StatusBadRequest)
+		http.Error(w, "Missing ID", http.StatusBadRequest)
 		return
 	}
 
-	av, err := dynamodbattribute.MarshalMap(item)
+	bucket := client.Bucket(bucketName)
+	obj := bucket.Object(item.ID).NewWriter(ctx)
+	defer obj.Close()
+
+	data, err := json.Marshal(item)
 	if err != nil {
 		log.Printf("Error marshalling item: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	_, err = db.PutItem(&dynamodb.PutItemInput{
-		TableName: aws.String(tableName),
-		Item:      av,
-	})
-	if err != nil {
-		log.Printf("Error putting item into DynamoDB: %v", err)
+	if _, err := obj.Write(data); err != nil {
+		log.Printf("Error writing to bucket: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -90,51 +115,35 @@ func addTodo(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteTodo(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	id := params["id"]
-	if id == "" {
-		log.Println("Missing ID in the request parameters")
-		http.Error(w, "Missing ID in the request parameters", http.StatusBadRequest)
+	vars := mux.Vars(r)
+	todoID := vars["id"]
+
+	// Ensure ID is provided
+	if todoID == "" {
+		log.Println("Missing ID in the request URL")
+		http.Error(w, "Missing ID", http.StatusBadRequest)
 		return
 	}
-	fmt.Println("ID: ", id)
 
-	// Log the ID to be deleted
-	log.Printf("Deleting item with ID: %s", id)
+	bucket := client.Bucket(bucketName)
+	obj := bucket.Object(todoID)
 
-	// Ensure the key matches the schema
-	_, err := db.DeleteItem(&dynamodb.DeleteItemInput{
-		TableName: aws.String(tableName),
-		Key: map[string]*dynamodb.AttributeValue{
-			"id": {
-				S: aws.String(id),
-			},
-		},
-	})
-	if err != nil {
-		log.Printf("Error deleting item from DynamoDB: %v", err)
+	// Delete the object from the bucket
+	if err := obj.Delete(ctx); err != nil {
+		log.Printf("Error deleting object: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Item deleted"})
+	w.WriteHeader(http.StatusNoContent) // 204 No Content
 }
 
 func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/todos", getTodos).Methods("GET")
 	r.HandleFunc("/todos", addTodo).Methods("POST")
-	r.HandleFunc("/todos/{id}", deleteTodo).Methods("DELETE")
+	r.HandleFunc("/todos/{id}", deleteTodo).Methods("DELETE") // New DELETE route
 
-	// Serve static files from the "static" directory
-	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./static/")))
-
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "9090" // Changed port to 9090 as per your logs
-	}
-
-	log.Printf("Server listening on port %s", port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), r))
+	fmt.Println("Starting server on :9090")
+	log.Fatal(http.ListenAndServe(":9090", r))
 }
