@@ -37,34 +37,24 @@ jobs:
         skip-version-file: "true"
         skip-commit: "true"
         
-    - name: "[Build] Build Container Image with Buildah"
-      id: build
-      uses: redhat-actions/buildah-build@v2
+    
+    - name: Authenticate to Google Cloud
+      id: auth
+      uses: google-github-actions/auth@v2
       with:
-        image: okp-crossplane-demo
-        tags: ${{ steps.version.outputs.nextStrict }}
-        containerfiles: |
-          Dockerfile
-          
-    - name: Set up Google Cloud SDK
-      uses: google-github-actions/setup-gcloud@v1
+        credentials_json: '${{ secrets.GCP_SA_KEY }}'
+      
+    - name: Building and pushing the image
+      uses: ./
+        # uses: RafikFarhad/push-to-gcr-github-action@v5-rc1 # <- use this on your workflow
       with:
-        project_id: ${{ secrets.GCP_PROJECT_ID }}  # GCP Project ID from GitHub Secrets
-        service_account_key: ${{ secrets.GCP_SA_KEY }}  # GCP Service Account Key from GitHub Secrets
-        export_default_credentials: true
-        
-    - name: Authenticate Docker with GCR
-      run: |
-        echo "${{ secrets.GCP_SA_KEY }}" | docker login -u _json_key --password-stdin https://gcr.io
- 
-        
-    - name: "[AWS] Push Container Image to ECR with Podman"
-      id: push
-      uses: redhat-actions/push-to-registry@v2
-      with:
-        image: okp-crossplane-demo
-        tags: ${{ steps.version.outputs.nextStrict }}
-        registry: gcr.io/okp-crossplane-setup
+        gcloud_service_key: ${{ secrets.GCP_SA_KEY }} # <- not needed when used with google-github-actions/auth@v2
+        registry: gcr.io
+        project_id: okp-crossplane-setup
+        image_name: okp-crossplane-demo
+        image_tag: ${{ steps.version.outputs.nextStrict }}
+        dockerfile: ./Dockerfile
+        target: build   
         
     - name: "[AWS] Print Image URL/ECR destination"
       run: echo "Image pushed to ${{ steps.push.outputs.registry-paths }}"
