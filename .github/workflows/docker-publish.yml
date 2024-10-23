@@ -40,16 +40,17 @@ jobs:
         containerfiles: |
           Dockerfile
           
-    - name: "[AWS] Configure credentials"
-      uses: aws-actions/configure-aws-credentials@v1
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: eu-west-2
+        project_id: ${{ secrets.GCP_PROJECT_ID }}  # GCP Project ID from GitHub Secrets
+        service_account_key: ${{ secrets.GCP_SA_KEY }}  # GCP Service Account Key from GitHub Secrets
+        export_default_credentials: true
         
-    - name: "[AWS] Login to ECR"
-      id: login
-      uses: aws-actions/amazon-ecr-login@v1  
+    - name: Authenticate Docker with GCR
+      run: |
+        echo "${{ secrets.GCP_SA_KEY }}" | docker login -u _json_key --password-stdin https://gcr.io
+ 
         
     - name: "[AWS] Push Container Image to ECR with Podman"
       id: push
@@ -57,7 +58,7 @@ jobs:
       with:
         image: we.are.developers.demo
         tags: ${{ steps.version.outputs.nextStrict }}
-        registry: ${{ steps.login.outputs.registry }}
+        registry: gcr.io/${{ secrets.GCP_PROJECT_ID }}
         
     - name: "[AWS] Print Image URL/ECR destination"
       run: echo "Image pushed to ${{ steps.push.outputs.registry-paths }}"
