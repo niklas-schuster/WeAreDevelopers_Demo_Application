@@ -51,14 +51,22 @@ jobs:
       uses: google-github-actions/auth@v2
       with:
         credentials_json: '${{ secrets.GCP_SA_KEY }}'
-    - name: Pushing the image
-      uses: RafikFarhad/push-to-gcr-github-action@v5-rc1 # <- use this on your workflow
+    - name: "[AWS] Push Container Image to ECR with Podman"
+      id: push
+      uses: redhat-actions/push-to-registry@v2
       with:
-        registry: gcr.io
-        project_id: okp-crossplane-setup
-        image_name: okp-crossplane-demo
-        image_tag: ${{ steps.version.outputs.nextStrict }}
-        push_only: true
+        image: okp-crossplane-demo
+        tags: ${{ steps.version.outputs.nextStrict }}
+        registry: gcr.io/okp-crossplane-setup
+    
+    #- name: Pushing the image
+    #  uses: RafikFarhad/push-to-gcr-github-action@v5-rc1 # <- use this on your workflow
+    #  with:
+    #    registry: gcr.io
+    #    project_id: okp-crossplane-setup
+    #    image_name: okp-crossplane-demo
+    #    image_tag: ${{ steps.version.outputs.nextStrict }}
+    #    push_only: true
         
     - name: "[AWS] Print Image URL/ECR destination"
       run: echo "Image pushed to ${{ steps.push.outputs.registry-paths }}"
