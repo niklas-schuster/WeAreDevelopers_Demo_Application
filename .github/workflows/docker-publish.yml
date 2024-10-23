@@ -35,7 +35,7 @@ jobs:
       id: build
       uses: redhat-actions/buildah-build@v2
       with:
-        image: we.are.developers.demo
+        image: okp-crossplane-demo
         tags: ${{ steps.version.outputs.nextStrict }}
         containerfiles: |
           Dockerfile
@@ -56,9 +56,9 @@ jobs:
       id: push
       uses: redhat-actions/push-to-registry@v2
       with:
-        image: we.are.developers.demo
+        image: okp-crossplane-demo
         tags: ${{ steps.version.outputs.nextStrict }}
-        registry: gcr.io/${{ secrets.GCP_PROJECT_ID }}
+        registry: gcr.io/okp-crossplane-setup
         
     - name: "[AWS] Print Image URL/ECR destination"
       run: echo "Image pushed to ${{ steps.push.outputs.registry-paths }}"
