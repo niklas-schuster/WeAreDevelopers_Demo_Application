@@ -12,7 +12,13 @@ jobs:
     steps:
     - name: "[Init] Checkout Repository"
       uses: actions/checkout@v3
-      
+    - name: Setup Go ${{ matrix.go-version }}
+      uses: actions/setup-go@v5
+      with:
+        go-version: 1.23
+      # You can test your matrix by printing the current Go version
+    - name: Display Go version
+      run: go version
     - name: "[Release] Determine Release Version"
       id: version
       uses: ietf-tools/semver-action@v1
